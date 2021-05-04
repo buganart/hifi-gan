@@ -15,7 +15,6 @@ from torch.utils.data import DistributedSampler, DataLoader
 import torch.multiprocessing as mp
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
-from env import AttrDict, build_env
 from meldataset import MelDataset, mel_spectrogram, get_dataset_filelist
 from models import (
     Generator,
@@ -438,6 +437,7 @@ def main():
     parser.add_argument("--input_validation_file", default="")
     parser.add_argument("--checkpoint_path", default="./")
     parser.add_argument("--config", default="config_v1.json")
+    parser.add_argument("--config_string", default=None)
     parser.add_argument("--training_epochs", default=3100, type=int)
     parser.add_argument("--stdout_interval", default=5, type=int)
     parser.add_argument("--checkpoint_interval", default=5000, type=int)
@@ -456,9 +456,16 @@ def main():
     with open(a.config) as f:
         data = f.read()
 
+    # load json, and update/replace argument in config file with argument from config_string
     json_config = json.loads(data)
-    h = AttrDict(json_config)
-    build_env(a.config, "config.json", a.checkpoint_path)
+    config_string = json.loads(a.config_string)
+    json_config.update(config_string)
+    h = argparse.Namespace(**json_config)
+
+    # combine a with h
+    h = vars(h)
+    h.update(vars(a))
+    config = argparse.Namespace(**h)
 
     # build wandb run (if resume run, previous run config will overwrite those set above)
     entity = "demiurge"
@@ -469,9 +476,9 @@ def main():
         previous_run = api.run(f"{entity}/{project}/{resume_run_id}")
         steps = previous_run.lastHistoryStep
         prev_args = argparse.Namespace(**previous_run.config)
-        a = vars(a)
-        a.update(vars(prev_args))
-        a = argparse.Namespace(**a)
+        config = vars(config)
+        config.update(vars(prev_args))
+        config = argparse.Namespace(**config)
         print(f"Resuming run ID {resume_run_id}.")
     else:
         print("Starting new run from scratch.")
@@ -481,10 +488,10 @@ def main():
         entity=entity,
         project=project,
         id=resume_run_id,
-        config=a,
+        config=config,
         resume=True if resume_run_id else False,
         save_code=True,
-        dir=a.checkpoint_path,
+        dir=config.checkpoint_path,
     )
 
     print("run id: " + str(wandb.run.id))
@@ -492,10 +499,11 @@ def main():
     # set up wandb dir (and checkpoint dir)
     checkpoint_path = Path(wandb.run.dir)
     checkpoint_path.mkdir(parents=True, exist_ok=True)
-    a.checkpoint_path = checkpoint_path
+    config.checkpoint_path = checkpoint_path
 
-    # save config
-    # wandb.save("config.json")
+    #
+    a = config
+    h = config
 
     torch.manual_seed(h.seed)
     if torch.cuda.is_available():
