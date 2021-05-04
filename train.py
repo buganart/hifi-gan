@@ -29,7 +29,7 @@ from utils import plot_spectrogram, scan_checkpoint, load_checkpoint, save_check
 torch.backends.cudnn.benchmark = True
 
 
-def train(rank, a, h):
+def train(rank, a, h, resume_run_id=None):
     if h.num_gpus > 1:
         init_process_group(
             backend=h.dist_config["dist_backend"],
@@ -50,9 +50,11 @@ def train(rank, a, h):
         os.makedirs(a.checkpoint_path, exist_ok=True)
         print("checkpoints directory : ", a.checkpoint_path)
 
-    if os.path.isdir(a.checkpoint_path):
-        cp_g = scan_checkpoint(a.checkpoint_path, "g_")
-        cp_do = scan_checkpoint(a.checkpoint_path, "do_")
+    if resume_run_id:
+        restored_g = wandb.restore("g_latest")
+        cp_g = restored_g.name
+        restored_do = wandb.restore("do_latest")
+        cp_do = restored_do.name
 
     steps = 0
     if cp_g is None or cp_do is None:
@@ -235,9 +237,17 @@ def train(rank, a, h):
                             steps, loss_gen_all, mel_error, time.time() - start_b
                         )
                     )
+                    wandb.log(
+                        {
+                            "loss/Gen Loss Total": loss_gen_all,
+                            "loss/Mel-Spec. Error": mel_error,
+                        },
+                        step=steps,
+                    )
 
                 # checkpointing
                 if steps % a.checkpoint_interval == 0 and steps != 0:
+                    # generator
                     checkpoint_path = "{}/g_{:08d}".format(a.checkpoint_path, steps)
                     save_checkpoint(
                         checkpoint_path,
@@ -247,6 +257,20 @@ def train(rank, a, h):
                             ).state_dict()
                         },
                     )
+                    checkpoint_name = "g_{:08d}".format(steps)
+                    wandb.save(checkpoint_name)
+                    # also save as latest
+                    checkpoint_path = "{}/g_latest".format(a.checkpoint_path)
+                    save_checkpoint(
+                        checkpoint_path,
+                        {
+                            "generator": (
+                                generator.module if h.num_gpus > 1 else generator
+                            ).state_dict()
+                        },
+                    )
+                    wandb.save("g_latest")
+                    # discriminator
                     checkpoint_path = "{}/do_{:08d}".format(a.checkpoint_path, steps)
                     save_checkpoint(
                         checkpoint_path,
@@ -259,6 +283,22 @@ def train(rank, a, h):
                             "epoch": epoch,
                         },
                     )
+                    checkpoint_name = "do_{:08d}".format(steps)
+                    wandb.save(checkpoint_name)
+                    # also save as latest
+                    checkpoint_path = "{}/do_latest".format(a.checkpoint_path)
+                    save_checkpoint(
+                        checkpoint_path,
+                        {
+                            "mpd": (mpd.module if h.num_gpus > 1 else mpd).state_dict(),
+                            "msd": (msd.module if h.num_gpus > 1 else msd).state_dict(),
+                            "optim_g": optim_g.state_dict(),
+                            "optim_d": optim_d.state_dict(),
+                            "steps": steps,
+                            "epoch": epoch,
+                        },
+                    )
+                    wandb.save("do_latest")
 
                 # Tensorboard summary logging
                 if steps % a.summary_interval == 0:
@@ -271,6 +311,8 @@ def train(rank, a, h):
                     torch.cuda.empty_cache()
                     val_err_tot = 0
                     with torch.no_grad():
+                        samples_orig = []
+                        samples_pred = []
                         for j, batch in enumerate(validation_loader):
                             x, y, _, y_mel = batch
                             y_g_hat = generator(x.to(device))
@@ -303,6 +345,17 @@ def train(rank, a, h):
                                         steps,
                                     )
 
+                                    # log orig audio to wandb
+                                    orig_audio = y.squeeze().cpu()
+                                    print("orig_audio shape:", orig_audio.shape)
+                                    samples_orig.append(
+                                        wandb.Audio(
+                                            orig_audio,
+                                            caption=f"sample {i}",
+                                            sample_rate=h.sampling_rate,
+                                        )
+                                    )
+
                                 sw.add_audio(
                                     "generated/y_hat_{}".format(j),
                                     y_g_hat[0],
@@ -327,8 +380,34 @@ def train(rank, a, h):
                                     steps,
                                 )
 
+                                # log pred audio to wandb
+                                pred_audio = y_g_hat.squeeze().cpu()
+                                print("pred_audio shape:", pred_audio.shape)
+                                samples_pred.append(
+                                    wandb.Audio(
+                                        pred_audio,
+                                        caption=f"sample {i}",
+                                        sample_rate=h.sampling_rate,
+                                    )
+                                )
+
                         val_err = val_err_tot / (j + 1)
                         sw.add_scalar("validation/mel_spec_error", val_err, steps)
+
+                        # log audios to wandb
+                        wandb.log(
+                            {
+                                "audio/generated": samples_pred,
+                            },
+                            step=steps,
+                        )
+                        if steps == 0:
+                            wandb.log(
+                                {
+                                    "audio/original": samples_orig,
+                                },
+                                step=steps,
+                            )
 
                     generator.train()
 
@@ -351,6 +430,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--group_name", default=None)
+    parser.add_argument("--resume_run_id", default=None)
     parser.add_argument("--input_wavs_dir", default="../data/CAGE_ONE6_22_5")
     parser.add_argument("--input_mels_dir", default="ft_dataset")
     parser.add_argument("--input_training_file", default="")
@@ -379,6 +459,43 @@ def main():
     h = AttrDict(json_config)
     build_env(a.config, "config.json", a.checkpoint_path)
 
+    # build wandb run (if resume run, previous run config will overwrite those set above)
+    entity = "demiurge"
+    project = "hifi-gan"
+    resume_run_id = args.resume_run_id
+    if resume_run_id:
+        api = wandb.Api()
+        previous_run = api.run(f"{entity}/{project}/{resume_run_id}")
+        steps = previous_run.lastHistoryStep
+        prev_args = argparse.Namespace(**previous_run.config)
+        a = vars(a)
+        a.update(vars(prev_args))
+        a = Namespace(**a)
+        print(f"Resuming run ID {resume_run_id}.")
+    else:
+        print("Starting new run from scratch.")
+
+        # init wandb run
+    wandb.init(
+        entity=entity,
+        project=project,
+        id=resume_run_id,
+        config=a,
+        resume=True if resume_run_id else False,
+        save_code=True,
+        dir=a.checkpoint_path,
+    )
+
+    print("run id: " + str(wandb.run.id))
+    print("run name: " + str(wandb.run.name))
+    # set up wandb dir (and checkpoint dir)
+    checkpoint_path = Path(wandb.run.dir)
+    checkpoint_path.mkdir(parents=True, exist_ok=True)
+    a.checkpoint_path = checkpoint_path
+
+    # save config
+    # wandb.save("config.json")
+
     torch.manual_seed(h.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(h.seed)
@@ -395,10 +512,11 @@ def main():
             args=(
                 a,
                 h,
+                resume_run_id,
             ),
         )
     else:
-        train(0, a, h)
+        train(0, a, h, resume_run_id)
 
 
 if __name__ == "__main__":
