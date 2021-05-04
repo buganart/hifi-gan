@@ -51,6 +51,8 @@ def train(rank, a, h, resume_run_id=None):
         os.makedirs(a.checkpoint_path, exist_ok=True)
         print("checkpoints directory : ", a.checkpoint_path)
 
+    cp_g = None
+    cp_do = None
     if resume_run_id:
         restored_g = wandb.restore("g_latest")
         cp_g = restored_g.name
