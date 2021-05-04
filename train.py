@@ -435,7 +435,7 @@ def main():
     parser.add_argument("--input_mels_dir", default="ft_dataset")
     parser.add_argument("--input_training_file", default="")
     parser.add_argument("--input_validation_file", default="")
-    parser.add_argument("--checkpoint_path", default="cp_hifigan")
+    parser.add_argument("--checkpoint_path", default="./")
     parser.add_argument("--config", default="config_v1.json")
     parser.add_argument("--training_epochs", default=3100, type=int)
     parser.add_argument("--stdout_interval", default=5, type=int)
@@ -462,7 +462,7 @@ def main():
     # build wandb run (if resume run, previous run config will overwrite those set above)
     entity = "demiurge"
     project = "hifi-gan"
-    resume_run_id = args.resume_run_id
+    resume_run_id = a.resume_run_id
     if resume_run_id:
         api = wandb.Api()
         previous_run = api.run(f"{entity}/{project}/{resume_run_id}")
