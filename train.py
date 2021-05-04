@@ -437,7 +437,7 @@ def main():
     parser.add_argument("--input_validation_file", default="")
     parser.add_argument("--checkpoint_path", default="./")
     parser.add_argument("--config", default="config_v1.json")
-    parser.add_argument("--config_string", default=None)
+    parser.add_argument("--config_string", type=str, default="")
     parser.add_argument("--training_epochs", default=3100, type=int)
     parser.add_argument("--stdout_interval", default=5, type=int)
     parser.add_argument("--checkpoint_interval", default=5000, type=int)
@@ -458,8 +458,10 @@ def main():
 
     # load json, and update/replace argument in config file with argument from config_string
     json_config = json.loads(data)
-    config_string = json.loads(a.config_string)
-    json_config.update(config_string)
+    if a.config_string:
+        config_string = json.loads(a.config_string)
+        json_config.update(config_string)
+
     h = argparse.Namespace(**json_config)
 
     # combine a with h
