@@ -350,7 +350,6 @@ def train(rank, a, h, resume_run_id=None):
 
                                     # log orig audio to wandb
                                     orig_audio = y.squeeze().cpu()
-                                    print("orig_audio shape:", orig_audio.shape)
                                     samples_orig.append(
                                         wandb.Audio(
                                             orig_audio,
@@ -385,7 +384,6 @@ def train(rank, a, h, resume_run_id=None):
 
                                 # log pred audio to wandb
                                 pred_audio = y_g_hat.squeeze().cpu()
-                                print("pred_audio shape:", pred_audio.shape)
                                 samples_pred.append(
                                     wandb.Audio(
                                         pred_audio,
