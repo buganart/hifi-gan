@@ -471,7 +471,7 @@ def main():
         prev_args = argparse.Namespace(**previous_run.config)
         a = vars(a)
         a.update(vars(prev_args))
-        a = Namespace(**a)
+        a = argparse.Namespace(**a)
         print(f"Resuming run ID {resume_run_id}.")
     else:
         print("Starting new run from scratch.")
