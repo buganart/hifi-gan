@@ -459,6 +459,7 @@ def main():
     # load json, and update/replace argument in config file with argument from config_string
     json_config = json.loads(data)
     if a.config_string:
+        print("a.config_string", a.config_string)
         config_string = json.loads(a.config_string)
         json_config.update(config_string)
 
@@ -504,6 +505,7 @@ def main():
     config.checkpoint_path = checkpoint_path
 
     #
+    print("config:", config)
     a = config
     h = config
 
