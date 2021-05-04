@@ -113,7 +113,7 @@ def get_dataset_filelist(a):
             input_wavs_dir, input_training_file, input_validation_file
         )
 
-    return training_files, validation_file
+    return training_files, validation_files
 
 
 def process_dataset_filelist(
