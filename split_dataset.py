@@ -11,7 +11,7 @@ def parse_args():
     return args
 
 
-def split_data(data_path, shuffle):
+def split_data(data_path, shuffle=True):
     supported_extensions = set([".wav", ".aif", ".aiff", ".mp3", ".m4a"])
     audio_paths = list(Path(data_path).glob("*.*"))
     # check files in filepath_list is supported (by extensions)
