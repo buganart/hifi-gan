@@ -4,9 +4,11 @@ import random
 import torch
 import torch.utils.data
 import numpy as np
+from pathlib import Path
 from librosa.util import normalize
 from scipy.io.wavfile import read
 from librosa.filters import mel as librosa_mel_fn
+from split_dataset import split_data
 
 MAX_WAV_VALUE = 32768.0
 
@@ -92,18 +94,39 @@ def mel_spectrogram(
 
 
 def get_dataset_filelist(a):
-    with open(a.input_training_file, "r", encoding="utf-8") as fi:
+    input_wavs_dir = a.input_wavs_dir
+    input_training_file = a.input_training_file
+    input_validation_file = a.input_validation_file
+    try:
+        training_files, validation_files = process_dataset_filelist(
+            input_wavs_dir, input_training_file, input_validation_file
+        )
+    except Exception as e:
+        print(e)
+        print(
+            f"processing input_training_file/input_validation_file failed. Run split dataset on input_wavs_dir: {input_wavs_dir}..."
+        )
+        split_data(input_wavs_dir)
+        input_training_file = str(Path(input_wavs_dir) / "train_files.txt")
+        input_validation_file = str(Path(input_wavs_dir) / "test_files.txt")
+        training_files, validation_files = process_dataset_filelist(
+            input_wavs_dir, input_training_file, input_validation_file
+        )
+
+    return training_files, validation_file
+
+
+def process_dataset_filelist(
+    input_wavs_dir, input_training_file, input_validation_file
+):
+    with open(input_training_file, "r", encoding="utf-8") as fi:
         training_files = [
-            os.path.join(a.input_wavs_dir, x)
-            for x in fi.read().split("\n")
-            if len(x) > 0
+            os.path.join(input_wavs_dir, x) for x in fi.read().split("\n") if len(x) > 0
         ]
 
-    with open(a.input_validation_file, "r", encoding="utf-8") as fi:
+    with open(input_validation_file, "r", encoding="utf-8") as fi:
         validation_files = [
-            os.path.join(a.input_wavs_dir, x)
-            for x in fi.read().split("\n")
-            if len(x) > 0
+            os.path.join(input_wavs_dir, x) for x in fi.read().split("\n") if len(x) > 0
         ]
     return training_files, validation_files
 

@@ -6,6 +6,7 @@ import os
 import time
 import argparse
 import json
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
@@ -346,16 +347,16 @@ def train(rank, a, h):
 
 def main():
     print("Initializing Training Process..")
-
+    # input_wavs_dir ../music_sample/TESTING
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--group_name", default=None)
     parser.add_argument("--input_wavs_dir", default="../data/CAGE_ONE6_22_5")
     parser.add_argument("--input_mels_dir", default="ft_dataset")
-    parser.add_argument("--input_training_file", default="train_files.txt")
-    parser.add_argument("--input_validation_file", default="test_files.txt")
+    parser.add_argument("--input_training_file", default="")
+    parser.add_argument("--input_validation_file", default="")
     parser.add_argument("--checkpoint_path", default="cp_hifigan")
-    parser.add_argument("--config", default="")
+    parser.add_argument("--config", default="config_v1.json")
     parser.add_argument("--training_epochs", default=3100, type=int)
     parser.add_argument("--stdout_interval", default=5, type=int)
     parser.add_argument("--checkpoint_interval", default=5000, type=int)
@@ -364,6 +365,12 @@ def main():
     parser.add_argument("--fine_tuning", default=False, type=bool)
 
     a = parser.parse_args()
+
+    # process input_training_file and input_validation_file
+    if not a.input_training_file:
+        a.input_training_file = str(Path(a.input_wavs_dir) / "train_files.txt")
+    if not a.input_validation_file:
+        a.input_validation_file = str(Path(a.input_wavs_dir) / "test_files.txt")
 
     with open(a.config) as f:
         data = f.read()
