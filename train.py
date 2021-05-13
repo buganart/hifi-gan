@@ -115,7 +115,7 @@ def train(rank, a, h, resume_run_id=None):
         fine_tuning=a.fine_tuning,
         base_mels_path=a.input_mels_dir,
     )
-
+    print(f"train dataset size:{len(trainset)}")
     train_sampler = DistributedSampler(trainset) if h.num_gpus > 1 else None
 
     train_loader = DataLoader(
@@ -147,6 +147,7 @@ def train(rank, a, h, resume_run_id=None):
             fine_tuning=a.fine_tuning,
             base_mels_path=a.input_mels_dir,
         )
+        print(f"valid dataset size:{len(validset)}")
         validation_loader = DataLoader(
             validset,
             num_workers=1,
