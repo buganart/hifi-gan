@@ -10,13 +10,23 @@ from scipy.io.wavfile import read
 from librosa.filters import mel as librosa_mel_fn
 from split_dataset import split_data
 
-MAX_WAV_VALUE = 32768.0
+# MAX_WAV_VALUE = 32768.0
 
 
 def load_wav(full_path):
     sampling_rate, data = read(full_path)
+
+    # process to float32 based on dtype
+    if data.dtype == np.int16:
+        data = data / 32768.0
+    elif data.dtype == np.int32:
+        data = data / 2147483648.0
+    elif data.dtype == np.uint8:
+        data = (data / 256.0) - 1
+
+    # Stereo to Mono
     if len(data.shape) > 1:
-        data = data[:, 0]
+        data = np.sum(data, axis=1) / 2
     return data, sampling_rate
 
 
@@ -176,9 +186,9 @@ class MelDataset(torch.utils.data.Dataset):
         filename = self.audio_files[index]
         if self._cache_ref_count == 0:
             audio, sampling_rate = load_wav(filename)
-            audio = audio / MAX_WAV_VALUE
-            if not self.fine_tuning:
-                audio = normalize(audio) * 0.95
+            # audio = audio / MAX_WAV_VALUE
+            # if not self.fine_tuning:
+            #     audio = normalize(audio) * 0.95
             self.cached_wav = audio
             if sampling_rate != self.sampling_rate:
                 raise ValueError(
